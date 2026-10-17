@@ -1,0 +1,38 @@
+# Builds the Windows installer and the Android APK in the cloud (free GitHub account is enough).
+# Push this project to a GitHub repo -> Actions tab -> "Build installers" -> download the artifacts.
+name: Build installers
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip pyinstaller pillow
+      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name QBasicIDE --hidden-import PIL.ImageDraw --hidden-import PIL.ImageFont qbasic_ide.py
+      - run: choco install innosetup -y --no-progress
+      - run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\QBasicIDE.iss'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QBasicIDE-Windows
+          path: |
+            installer/QBasicIDE_Setup.exe
+            dist/QBasicIDE.exe
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build APK with Buildozer
+        id: buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        with:
+          workdir: android
+          buildozer_version: stable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QBasicIDE-Android-APK
+          path: ${{ steps.buildozer.outputs.filename }}
