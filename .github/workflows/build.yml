@@ -1,8 +1,10 @@
+
 name: Build Android App
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,42 +14,70 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Set up Java (Required for Android/Gradle builds)
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: zulu
+          java-version: "17"
 
-      # 2. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      # 3. Install system dependencies required by Buildozer & Android SDK
       - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git zip unzip autoconf automake libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
-            libffi-dev libssl-dev
+            libffi-dev libssl-dev cmake build-essential \
+            libltdl-dev
 
-      # 4. Install Buildozer and Cython
-      - name: Install Buildozer & Dependencies
+      - name: Install Buildozer and Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade Cython==0.29.36 buildozer
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "Cython==0.29.36" buildozer
 
-      # 5. Build the APK using Buildozer
+      - name: Locate Buildozer Configuration
+        id: locate
+        shell: bash
+        run: |
+          echo "Repository root:"
+          pwd
+          echo "Repository files:"
+          ls -la
+
+          SPEC="$(find . -type f -name 'buildozer.spec' \
+            -not -path './.git/*' \
+            -not -path './.buildozer/*' \
+            -print -quit)"
+
+          if [ -z "$SPEC" ]; then
+            echo "::error::buildozer.spec not found. Add it to your GitHub repository."
+            exit 1
+          fi
+
+          SPEC_DIR="$(dirname "$SPEC")"
+          echo "spec_dir=$SPEC_DIR" >> "$GITHUB_OUTPUT"
+
+          echo "Found configuration: $SPEC"
+          echo "Project directory: $SPEC_DIR"
+          ls -la "$SPEC_DIR"
+
       - name: Build with Buildozer
+        working-directory: .
+        env:
+          SPEC_DIR: ${{ steps.locate.outputs.spec_dir }}
         run: |
+          cd "$SPEC_DIR"
           buildozer -v android debug
 
-      # 6. Upload the generated APK artifact
       - name: Upload APK Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: package
-          path: bin/*.apk
+          name: android-apk
+          path: "**/bin/*.apk"
+          if-no-files-found: error
+          retention-days: 7
