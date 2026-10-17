@@ -1,38 +1,53 @@
-# Builds the Windows installer and the Android APK in the cloud (free GitHub account is enough).
-# Push this project to a GitHub repo -> Actions tab -> "Build installers" -> download the artifacts.
-name: Build installers
+name: Build Android App
+
 on:
   push:
-  workflow_dispatch:
+    branches: [ main ]
+
 jobs:
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install --upgrade pip pyinstaller pillow
-      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name QBasicIDE --hidden-import PIL.ImageDraw --hidden-import PIL.ImageFont qbasic_ide.py
-      - run: choco install innosetup -y --no-progress
-      - run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\QBasicIDE.iss'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: QBasicIDE-Windows
-          path: |
-            installer/QBasicIDE_Setup.exe
-            dist/QBasicIDE.exe
-  android:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Build APK with Buildozer
-        id: buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Set up Java (Required for Android/Gradle builds)
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
-          workdir: android
-          buildozer_version: stable
-      - uses: actions/upload-artifact@v4
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 2. Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          name: QBasicIDE-Android-APK
-          path: ${{ steps.buildozer.outputs.filename }}
+          python-version: '3.10'
+
+      # 3. Install system dependencies required by Buildozer & Android SDK
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
+            libffi-dev libssl-dev aclocal
+
+      # 4. Install Buildozer and Cython
+      - name: Install Buildozer & Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade Cython==0.29.36 buildozer
+
+      # 5. Build the APK using Buildozer
+      - name: Build with Buildozer
+        run: |
+          buildozer -v android debug
+
+      # 6. Upload the generated APK artifact
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: bin/*.apk
